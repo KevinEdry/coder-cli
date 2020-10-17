@@ -8,12 +8,14 @@ import (
 
 	"cdr.dev/coder-cli/coder-sdk"
 	"github.com/spf13/cobra"
+	"golang.org/x/xerrors"
 )
 
 func makeResourceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "resources",
-		Short: "manager Coder resources with platform-level context (users, organizations, environments)",
+		Use:    "resources",
+		Short:  "manager Coder resources with platform-level context (users, organizations, environments)",
+		Hidden: true,
 	}
 	cmd.AddCommand(resourceTop())
 	return cmd
@@ -24,15 +26,16 @@ func resourceTop() *cobra.Command {
 		Use: "top",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-
 			client, err := newClient()
 			if err != nil {
 				return err
 			}
 
-			envs, err := client.ListEnvironments(ctx)
+			// NOTE: it's not worth parrallelizing these calls yet given that this specific endpoint
+			// takes about 20x times longer than the other two
+			envs, err := client.Environments(ctx)
 			if err != nil {
-				return err
+				return xerrors.Errorf("get environments %w", err)
 			}
 
 			userEnvs := make(map[string][]coder.Environment)
@@ -42,13 +45,13 @@ func resourceTop() *cobra.Command {
 
 			users, err := client.Users(ctx)
 			if err != nil {
-				return err
+				return xerrors.Errorf("get users: %w", err)
 			}
 
 			orgs := make(map[string]coder.Organization)
 			orglist, err := client.Organizations(ctx)
 			if err != nil {
-				return err
+				return xerrors.Errorf("get organizations: %w", err)
 			}
 			for _, o := range orglist {
 				orgs[o.ID] = o
@@ -76,10 +79,9 @@ func resourceTop() *cobra.Command {
 						_, _ = fmt.Fprintln(tabwriter, fmtEnvResources(env, orgs))
 					}
 				}
-				fmt.Fprint(tabwriter, "\n")
+				_, _ = fmt.Fprint(tabwriter, "\n")
 			}
 			_ = tabwriter.Flush()
-
 			return nil
 		},
 	}
